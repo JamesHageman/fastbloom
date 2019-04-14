@@ -1,9 +1,7 @@
 # Golang CircleCI 2.0 configuration file
 #
 # Check https://circleci.com/docs/2.0/language-go/ for more details
-version: 2.1
-orbs:
-  codecov: codecov/codecov@1.0.2
+version: 2
 jobs:
   build:
     docker:
@@ -22,10 +20,9 @@ jobs:
       - run:
           name: "go test"
           command: |
-            go test -v -race -coverprofile=/tmp/artifacts/coverage.out ./...
-            go tool cover -html=/tmp/artifacts/coverage.out -o /tmp/artifacts/coverage.html
+            go test -v -race -coverprofile=coverage.txt ./...
+            go tool cover -html=coverage.txt -o /tmp/artifacts/coverage.html
+            bash <(curl -s https://codecov.io/bash)
       - run:
           name: "benchmark"
           command: go test -test.bench=".*" -test.benchmem > /tmp/artifacts/benchmark.txt
-      - codecov/upload:
-          file: /tmp/artifacts/coverage.out

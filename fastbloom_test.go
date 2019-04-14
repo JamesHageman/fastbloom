@@ -109,7 +109,7 @@ func TestLockFreeBloomFilter_Add_Concurrent(t *testing.T) {
 	}
 }
 
-func BenchmarkLockFreeAdd(b *testing.B) {
+func BenchmarkLockFreeAdd_SingleThreaded(b *testing.B) {
 	b.StopTimer()
 	f := fastbloom.NewFilter(uint(b.N), 0.1)
 	data := make([][]byte, b.N)
@@ -123,7 +123,7 @@ func BenchmarkLockFreeAdd(b *testing.B) {
 	}
 }
 
-func BenchmarkLockFreeAdd_Concurrent(b *testing.B) {
+func BenchmarkLockFreeAdd_4ConcurrentWriters(b *testing.B) {
 	b.StopTimer()
 	f := fastbloom.NewFilter(uint(b.N), 0.1)
 	data := make([][]byte, b.N)

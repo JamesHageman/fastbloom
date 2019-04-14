@@ -2,6 +2,8 @@
 #
 # Check https://circleci.com/docs/2.0/language-go/ for more details
 version: 2
+orbs:
+  codecov: codecov/codecov@1.0.2
 jobs:
   build:
     docker:
@@ -10,6 +12,20 @@ jobs:
     working_directory: ~/github.com/{{ORG_NAME}}/{{REPO_NAME}}
     steps:
       - checkout
-      - run: go get -v -d ./...
-      - run: go test -v -race ./...
-      - run: go test -test.bench=".*" -test.benchmem
+      - run:
+          name: "Create a temp directory for artifacts"
+          command: |
+            mkdir -p /tmp/artifacts
+      - run:
+          name: "go get"
+          command: go get -v -d ./...
+      - run:
+          name: "go test"
+          command: |
+            go test -v -race -coverprofile=/tmp/artifacts/coverage.out ./...
+            go tool cover -html=/tmp/artifacts/coverage.out -o /tmp/artifacts/coverage.html
+      - run:
+          name: "benchmark"
+          command: go test -test.bench=".*" -test.benchmem > /tmp/artifacts/benchmark.txt
+      - codecov/upload:
+          file: /tmp/artifacts/coverage.out

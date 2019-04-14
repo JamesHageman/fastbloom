@@ -1,14 +1,17 @@
-package fastbloom
+package fastbloom_test
 
 import (
+	"fmt"
 	"strconv"
 	"sync"
 	"testing"
+
+	"github.com/JamesHageman/fastbloom"
 )
 
 // Ensures that Capacity returns the number of bits, m, in the Bloom filter.
 func TestLockFreeBloomFilter_Capacity(t *testing.T) {
-	f := NewFilter(100, 0.1)
+	f := fastbloom.NewFilter(100, 0.1)
 
 	if capacity := f.Capacity(); capacity != 480 {
 		t.Errorf("Expected 480, got %d", capacity)
@@ -17,7 +20,7 @@ func TestLockFreeBloomFilter_Capacity(t *testing.T) {
 
 // Ensures that K returns the number of hash functions in the Bloom Filter.
 func TestLockFreeBloomFilter_K(t *testing.T) {
-	f := NewFilter(100, 0.1)
+	f := fastbloom.NewFilter(100, 0.1)
 
 	if k := f.K(); k != 4 {
 		t.Errorf("Expected 4, got %d", k)
@@ -26,7 +29,7 @@ func TestLockFreeBloomFilter_K(t *testing.T) {
 
 // Ensures that Test, Add, and TestAndAdd behave correctly.
 func TestLockFreeBloomFilter_TestAndAdd(t *testing.T) {
-	f := NewFilter(100, 0.01)
+	f := fastbloom.NewFilter(100, 0.01)
 
 	// `a` isn't in the filter.
 	if f.Test([]byte(`a`)) {
@@ -81,7 +84,7 @@ func TestLockFreeBloomFilter_Add_Concurrent(t *testing.T) {
 	workers := 100
 	perWorker := 1000
 	n := uint(perWorker * workers)
-	f := NewFilter(n, 0.01)
+	f := fastbloom.NewFilter(n, 0.01)
 
 	wg := sync.WaitGroup{}
 	for i := 0; i < workers; i++ {
@@ -108,7 +111,7 @@ func TestLockFreeBloomFilter_Add_Concurrent(t *testing.T) {
 
 func BenchmarkLockFreeAdd(b *testing.B) {
 	b.StopTimer()
-	f := NewFilter(uint(b.N), 0.1)
+	f := fastbloom.NewFilter(uint(b.N), 0.1)
 	data := make([][]byte, b.N)
 	for i := 0; i < b.N; i++ {
 		data[i] = []byte(strconv.Itoa(i))
@@ -122,7 +125,7 @@ func BenchmarkLockFreeAdd(b *testing.B) {
 
 func BenchmarkLockFreeAdd_Concurrent(b *testing.B) {
 	b.StopTimer()
-	f := NewFilter(uint(b.N), 0.1)
+	f := fastbloom.NewFilter(uint(b.N), 0.1)
 	data := make([][]byte, b.N)
 	for i := 0; i < b.N; i++ {
 		data[i] = []byte(strconv.Itoa(i))
@@ -144,4 +147,24 @@ func BenchmarkLockFreeAdd_Concurrent(b *testing.B) {
 		}()
 	}
 	wg.Wait()
+}
+
+func ExampleNewFilter() {
+	filter := fastbloom.NewFilter(100, 0.01)
+	fmt.Println(filter.Test([]byte(`a`)))
+	fmt.Println(filter.Test([]byte(`b`)))
+
+	filter.Add([]byte(`a`))
+	filter.Add([]byte(`b`))
+
+	fmt.Println(filter.Test([]byte(`a`)))
+	fmt.Println(filter.Test([]byte(`b`)))
+	fmt.Println(filter.Test([]byte(`c`)))
+
+	// Output:
+	// false
+	// false
+	// true
+	// true
+	// false
 }

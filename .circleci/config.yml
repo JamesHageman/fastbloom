@@ -10,6 +10,19 @@ jobs:
     working_directory: ~/github.com/{{ORG_NAME}}/{{REPO_NAME}}
     steps:
       - checkout
-      - run: go get -v -d ./...
-      - run: go test -v -race ./...
-      - run: go test -test.bench=".*" -test.benchmem
+      - run:
+          name: "Create a temp directory for artifacts"
+          command: |
+            mkdir -p /tmp/artifacts
+      - run:
+          name: "go get"
+          command: go get -v -d ./...
+      - run:
+          name: "go test"
+          command: |
+            go test -v -race -coverprofile=coverage.txt ./...
+            go tool cover -html=coverage.txt -o /tmp/artifacts/coverage.html
+            bash <(curl -s https://codecov.io/bash)
+      - run:
+          name: "benchmark"
+          command: go test -test.bench=".*" -test.benchmem > /tmp/artifacts/benchmark.txt

@@ -89,6 +89,7 @@ func TestLockFreeBloomFilter_Add_Concurrent(t *testing.T) {
 	wg := sync.WaitGroup{}
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
+		// create a worker to write data to the bloom filter
 		go func(start int) {
 			defer wg.Done()
 
@@ -96,6 +97,19 @@ func TestLockFreeBloomFilter_Add_Concurrent(t *testing.T) {
 				k := start + j
 				key := []byte(strconv.Itoa(k))
 				f.Add(key)
+			}
+		}(perWorker * i)
+
+		wg.Add(1)
+		// create another worker to read data from the filter, which should trigger
+		// the race detector if there is a data race.
+		go func(start int) {
+			defer wg.Done()
+
+			for j := 0; j < perWorker; j++ {
+				k := start + j
+				key := []byte(strconv.Itoa(k))
+				f.Test(key)
 			}
 		}(perWorker * i)
 	}

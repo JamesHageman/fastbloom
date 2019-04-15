@@ -90,9 +90,8 @@ func (f *Filter) TestAndAdd(key []byte) bool {
 
 		if !f.getBit(offset) {
 			member = false
+			f.setBit(offset)
 		}
-
-		f.setBit(offset)
 	}
 
 	return member
@@ -114,7 +113,7 @@ func (f *Filter) getBit(offset uint) bool {
 	byteOffset := offset % 32
 	mask := uint32(1 << byteOffset)
 
-	b := f.data[byteIndex]
+	b := atomic.LoadUint32(&f.data[byteIndex])
 	return b&mask != 0
 }
 

@@ -143,6 +143,13 @@ func TestFilter_GobEncode(t *testing.T) {
 	}
 }
 
+func TestFilter_GobDecode(t *testing.T) {
+	bs := []byte("foo")
+	f := fastbloom.Filter{}
+	err := f.GobDecode(bs)
+	assert.Error(t, err)
+}
+
 func BenchmarkLockFreeAdd_SingleThreaded(b *testing.B) {
 	b.StopTimer()
 	f := fastbloom.NewFilter(uint(b.N), 0.1)

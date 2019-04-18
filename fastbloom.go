@@ -6,6 +6,9 @@ import (
 	"math"
 	"sync"
 	"sync/atomic"
+
+	pb "github.com/JamesHageman/fastbloom/proto"
+	"github.com/golang/protobuf/proto"
 )
 
 // Filter is an implementation of a Bloom Filter that permits n concurrent
@@ -24,14 +27,10 @@ const fillRatio = 0.5
 func NewFilter(n uint, fpRate float64) *Filter {
 	m := optimalM(n, fpRate)
 	return &Filter{
-		data: make([]uint32, m/32+1),
-		m:    m,
-		k:    optimalK(fpRate),
-		hashPool: sync.Pool{
-			New: func() interface{} {
-				return fnv.New64()
-			},
-		},
+		data:     make([]uint32, m/32+1),
+		m:        m,
+		k:        optimalK(fpRate),
+		hashPool: sync.Pool{New: fnv64},
 	}
 }
 
@@ -109,11 +108,12 @@ func (f *Filter) hash(data []byte) (uint32, uint32) {
 }
 
 func (f *Filter) getBit(offset uint) bool {
-	byteIndex := offset / 32
-	byteOffset := offset % 32
-	mask := uint32(1 << byteOffset)
+	index := offset / 32
+	bit := offset % 32
+	mask := uint32(1 << bit)
+	ptr := &f.data[index]
 
-	b := atomic.LoadUint32(&f.data[byteIndex])
+	b := atomic.LoadUint32(ptr)
 	return b&mask != 0
 }
 
@@ -121,7 +121,6 @@ func (f *Filter) setBit(offset uint) {
 	index := offset / 32
 	bit := offset % 32
 	mask := uint32(1 << bit)
-
 	ptr := &f.data[index]
 
 	for {
@@ -132,6 +131,33 @@ func (f *Filter) setBit(offset uint) {
 			break
 		}
 	}
+}
+
+// GobEncode implements gob.GobEncoder interface.
+func (f *Filter) GobEncode() ([]byte, error) {
+	filter := &pb.Filter{
+		M:    uint64(f.m),
+		K:    uint64(f.k),
+		Data: f.data,
+	}
+	return proto.Marshal(filter)
+}
+
+// GobDecode implements gob.GobDecoder interface.
+func (f *Filter) GobDecode(data []byte) error {
+	filter := &pb.Filter{}
+	if err := proto.Unmarshal(data, filter); err != nil {
+		return err
+	}
+
+	*f = Filter{
+		m:        uint(filter.M),
+		k:        uint(filter.K),
+		data:     filter.Data,
+		hashPool: sync.Pool{New: fnv64},
+	}
+
+	return nil
 }
 
 // optimalM calculates the optimal Bloom filter size, m, based on the number of
@@ -145,4 +171,8 @@ func optimalM(n uint, fpRate float64) uint {
 // filter based on the desired rate of false positives.
 func optimalK(fpRate float64) uint {
 	return uint(math.Ceil(math.Log2(1 / fpRate)))
+}
+
+func fnv64() interface{} {
+	return fnv.New64()
 }

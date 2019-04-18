@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+message Filter {
+    uint64 m = 1;
+    uint64 k = 2;
+    repeated uint32 data = 3;
+}

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/JamesHageman/fastbloom"
+	"github.com/stretchr/testify/assert"
 )
 
 // Ensures that Capacity returns the number of bits, m, in the Bloom filter.
@@ -120,6 +121,25 @@ func TestLockFreeBloomFilter_Add_Concurrent(t *testing.T) {
 		if !f.Test(key) {
 			t.Errorf("key `%s` should be a member", string(key))
 		}
+	}
+}
+
+func TestFilter_GobEncode(t *testing.T) {
+	keys := []string{`a`, `b`, `c`}
+	filter := fastbloom.NewFilter(100, 0.01)
+	for _, k := range keys {
+		filter.Add([]byte(k))
+	}
+	b, err := filter.GobEncode()
+	assert.NoError(t, err)
+	decoded := &fastbloom.Filter{}
+	err = decoded.GobDecode(b)
+	assert.NoError(t, err)
+	assert.Equal(t, filter.Capacity(), decoded.Capacity())
+	assert.Equal(t, filter.K(), decoded.K())
+
+	for _, k := range keys {
+		assert.True(t, filter.Test([]byte(k)), "`%s` should be a member", k)
 	}
 }
 

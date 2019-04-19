@@ -5,17 +5,17 @@ import (
 )
 
 type MutexFilter struct {
-	*LockFreeFilter
-	sync.RWMutex
+	LockFreeFilter
+	rw sync.RWMutex
 }
 
 func NewMutexFilter(n uint, fpRate float64) *MutexFilter {
-	return &MutexFilter{LockFreeFilter: NewFilter(n, fpRate)}
+	return &MutexFilter{LockFreeFilter: *NewFilter(n, fpRate)}
 }
 
 func (f *MutexFilter) Test(key []byte) bool {
-	f.RLock()
-	defer f.RUnlock()
+	f.rw.RLock()
+	defer f.rw.RUnlock()
 
 	lower, upper := f.hash(key)
 
@@ -23,7 +23,7 @@ func (f *MutexFilter) Test(key []byte) bool {
 	for i := uint(0); i < f.k; i++ {
 		offset := (uint(lower) + uint(upper)*i) % f.m
 
-		if !f.getBit(offset) {
+		if !f.getBitNonAtomic(offset) {
 			return false
 		}
 	}
@@ -32,21 +32,21 @@ func (f *MutexFilter) Test(key []byte) bool {
 }
 
 func (f *MutexFilter) Add(key []byte) {
-	f.Lock()
-	defer f.Unlock()
+	f.rw.Lock()
+	defer f.rw.Unlock()
 
 	lower, upper := f.hash(key)
 
 	// Set all k bits to 1
 	for i := uint(0); i < f.k; i++ {
 		offset := (uint(lower) + uint(upper)*i) % f.m
-		f.setBit(offset)
+		f.setBitNonAtomic(offset)
 	}
 }
 
 func (f *MutexFilter) TestAndAdd(key []byte) bool {
-	f.Lock()
-	defer f.Unlock()
+	f.rw.Lock()
+	defer f.rw.Unlock()
 
 	lower, upper := f.hash(key)
 	member := true
@@ -55,16 +55,16 @@ func (f *MutexFilter) TestAndAdd(key []byte) bool {
 	for i := uint(0); i < f.k; i++ {
 		offset := (uint(lower) + uint(upper)*i) % f.m
 
-		if !f.getBit(offset) {
+		if !f.getBitNonAtomic(offset) {
 			member = false
-			f.setBit(offset)
+			f.setBitNonAtomic(offset)
 		}
 	}
 
 	return member
 }
 
-func (f *MutexFilter) getBit(offset uint) bool {
+func (f *MutexFilter) getBitNonAtomic(offset uint) bool {
 	index := offset / 32
 	bit := offset % 32
 	mask := uint32(1 << bit)
@@ -73,7 +73,7 @@ func (f *MutexFilter) getBit(offset uint) bool {
 	return b&mask != 0
 }
 
-func (f *MutexFilter) setBit(offset uint) {
+func (f *MutexFilter) setBitNonAtomic(offset uint) {
 	index := offset / 32
 	bit := offset % 32
 	mask := uint32(1 << bit)

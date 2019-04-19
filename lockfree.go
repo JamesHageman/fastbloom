@@ -55,7 +55,7 @@ func (f *LockFreeFilter) Test(key []byte) bool {
 	for i := uint(0); i < f.k; i++ {
 		offset := (uint(lower) + uint(upper)*i) % f.m
 
-		if !f.getBit(offset) {
+		if !f.getBitAtomic(offset) {
 			return false
 		}
 	}
@@ -71,7 +71,7 @@ func (f *LockFreeFilter) Add(key []byte) {
 	// Set all k bits to 1
 	for i := uint(0); i < f.k; i++ {
 		offset := (uint(lower) + uint(upper)*i) % f.m
-		f.setBit(offset)
+		f.setBitAtomic(offset)
 	}
 }
 
@@ -85,9 +85,9 @@ func (f *LockFreeFilter) TestAndAdd(key []byte) bool {
 	for i := uint(0); i < f.k; i++ {
 		offset := (uint(lower) + uint(upper)*i) % f.m
 
-		if !f.getBit(offset) {
+		if !f.getBitAtomic(offset) {
 			member = false
-			f.setBit(offset)
+			f.setBitAtomic(offset)
 		}
 	}
 
@@ -105,7 +105,7 @@ func (f *LockFreeFilter) hash(data []byte) (uint32, uint32) {
 	return higher, lower
 }
 
-func (f *LockFreeFilter) getBit(offset uint) bool {
+func (f *LockFreeFilter) getBitAtomic(offset uint) bool {
 	index := offset / 32
 	bit := offset % 32
 	mask := uint32(1 << bit)
@@ -115,7 +115,7 @@ func (f *LockFreeFilter) getBit(offset uint) bool {
 	return b&mask != 0
 }
 
-func (f *LockFreeFilter) setBit(offset uint) {
+func (f *LockFreeFilter) setBitAtomic(offset uint) {
 	index := offset / 32
 	bit := offset % 32
 	mask := uint32(1 << bit)

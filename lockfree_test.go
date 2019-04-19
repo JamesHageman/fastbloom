@@ -19,7 +19,7 @@ func TestLockFreeBloomFilter_Capacity(t *testing.T) {
 	}
 }
 
-// Ensures that K returns the number of hash functions in the Bloom Filter.
+// Ensures that K returns the number of hash functions in the Bloom LockFreeFilter.
 func TestLockFreeBloomFilter_K(t *testing.T) {
 	f := fastbloom.NewFilter(100, 0.1)
 
@@ -37,9 +37,7 @@ func TestLockFreeBloomFilter_TestAndAdd(t *testing.T) {
 		t.Error("`a` should not be a member")
 	}
 
-	if f.Add([]byte(`a`)) != f {
-		t.Error("Returned BloomFilter should be the same instance")
-	}
+	f.Add([]byte(`a`))
 
 	// `a` is now in the filter.
 	if !f.Test([]byte(`a`)) {
@@ -132,7 +130,7 @@ func TestFilter_GobEncode(t *testing.T) {
 	}
 	b, err := filter.GobEncode()
 	assert.NoError(t, err)
-	decoded := &fastbloom.Filter{}
+	decoded := &fastbloom.LockFreeFilter{}
 	err = decoded.GobDecode(b)
 	assert.NoError(t, err)
 	assert.Equal(t, filter.Capacity(), decoded.Capacity())
@@ -145,49 +143,37 @@ func TestFilter_GobEncode(t *testing.T) {
 
 func TestFilter_GobDecode(t *testing.T) {
 	bs := []byte("foo")
-	f := fastbloom.Filter{}
+	f := fastbloom.LockFreeFilter{}
 	err := f.GobDecode(bs)
 	assert.Error(t, err)
 }
 
 func BenchmarkLockFreeAdd_SingleThreaded(b *testing.B) {
 	b.StopTimer()
-	f := fastbloom.NewFilter(uint(b.N), 0.1)
-	data := make([][]byte, b.N)
-	for i := 0; i < b.N; i++ {
-		data[i] = []byte(strconv.Itoa(i))
-	}
+	f := fastbloom.NewFilter(uint(b.N), fpRate)
 	b.StartTimer()
-
-	for n := 0; n < b.N; n++ {
-		f.Add(data[n])
-	}
+	benchmarkFilterAdd_SingleThreaded(b, f.Add)
 }
 
 func BenchmarkLockFreeAdd_4ConcurrentWriters(b *testing.B) {
 	b.StopTimer()
-	f := fastbloom.NewFilter(uint(b.N), 0.1)
-	data := make([][]byte, b.N)
-	for i := 0; i < b.N; i++ {
-		data[i] = []byte(strconv.Itoa(i))
-	}
-	workers := 4
-	wg := sync.WaitGroup{}
-	wg.Add(workers)
+	f := fastbloom.NewFilter(uint(b.N), fpRate)
 	b.StartTimer()
+	benchmarkFilter_Add_4ConcurrentWriters(b, f.Add)
+}
 
-	for w := 0; w < workers; w++ {
-		start := b.N / workers * w
-		end := b.N / workers * (w + 1)
+func BenchmarkLockFreeFilter_Test_SingleThreaded(b *testing.B) {
+	b.StopTimer()
+	f := fastbloom.NewFilter(uint(b.N), fpRate)
+	b.StartTimer()
+	benchmarkFilterTest_SingleThreaded(b, f.Add, f.Test)
+}
 
-		go func() {
-			for i := start; i < end; i++ {
-				f.Add(data[i])
-			}
-			wg.Done()
-		}()
-	}
-	wg.Wait()
+func BenchmarkLockFreeFilter_Test_4ConcurrentReaders(b *testing.B) {
+	b.StopTimer()
+	f := fastbloom.NewFilter(uint(b.N), fpRate)
+	b.StartTimer()
+	benchmarkFilter_Test_4ConcurrentReaders(b, f.Add, f.Test)
 }
 
 func ExampleNewFilter() {

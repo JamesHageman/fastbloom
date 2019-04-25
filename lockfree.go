@@ -5,18 +5,17 @@ import (
 	"hash/fnv"
 	"math"
 	"sync"
-	"sync/atomic"
 
 	pb "github.com/JamesHageman/fastbloom/proto"
 	"github.com/golang/protobuf/proto"
 )
 
-// Filter is an implementation of a Bloom Filter that permits n concurrent
+// LockFreeFilter is an implementation of a Bloom LockFreeFilter that permits n concurrent
 // readers and m concurrent writers.
-type Filter struct {
-	data []uint32 // underlying bit vector
-	m    uint     // filter size
-	k    uint     // number of hash functions
+type LockFreeFilter struct {
+	buckets Buckets // underlying bit vector
+	m       uint    // filter size
+	k       uint    // number of hash functions
 
 	hashPool sync.Pool // pool of hash objects
 }
@@ -24,10 +23,10 @@ type Filter struct {
 const fillRatio = 0.5
 
 // NewFilter creates a bloom filter optimized for n elements with a falsePositive rate fpRate.
-func NewFilter(n uint, fpRate float64) *Filter {
+func NewFilter(n uint, fpRate float64) *LockFreeFilter {
 	m := optimalM(n, fpRate)
-	return &Filter{
-		data:     make([]uint32, m/32+1),
+	return &LockFreeFilter{
+		buckets:  &buckets32{data: make([]uint32, m/32+1)},
 		m:        m,
 		k:        optimalK(fpRate),
 		hashPool: sync.Pool{New: fnv64},
@@ -35,12 +34,12 @@ func NewFilter(n uint, fpRate float64) *Filter {
 }
 
 // Capacity returns the Bloom filter capacity, m.
-func (f *Filter) Capacity() uint {
+func (f *LockFreeFilter) Capacity() uint {
 	return f.m
 }
 
 // K returns the number of hash functions.
-func (f *Filter) K() uint {
+func (f *LockFreeFilter) K() uint {
 	return f.k
 }
 
@@ -48,14 +47,14 @@ func (f *Filter) K() uint {
 // true after a call to Add(key) or TestAndAdd(key) have completed. Because of
 // the possibility of false positives, Test(key) could also return true if the key
 // hasn't been added.
-func (f *Filter) Test(key []byte) bool {
+func (f *LockFreeFilter) Test(key []byte) bool {
 	lower, upper := f.hash(key)
 
 	// If any of the K bits are not set, then it's not a member.
 	for i := uint(0); i < f.k; i++ {
 		offset := (uint(lower) + uint(upper)*i) % f.m
 
-		if !f.getBit(offset) {
+		if !f.getBitAtomic(offset) {
 			return false
 		}
 	}
@@ -65,21 +64,19 @@ func (f *Filter) Test(key []byte) bool {
 
 // Add writes a key to the bloom filter. It can be called concurrently with other
 // calls to Add, TestAndAdd, and Test.
-func (f *Filter) Add(key []byte) *Filter {
+func (f *LockFreeFilter) Add(key []byte) {
 	lower, upper := f.hash(key)
 
 	// Set all k bits to 1
 	for i := uint(0); i < f.k; i++ {
 		offset := (uint(lower) + uint(upper)*i) % f.m
-		f.setBit(offset)
+		f.setBitAtomic(offset)
 	}
-
-	return f
 }
 
 // TestAndAdd adds a key to the bloom filter and returns true if it appears that
 // the key was already present.
-func (f *Filter) TestAndAdd(key []byte) bool {
+func (f *LockFreeFilter) TestAndAdd(key []byte) bool {
 	lower, upper := f.hash(key)
 	member := true
 
@@ -87,16 +84,16 @@ func (f *Filter) TestAndAdd(key []byte) bool {
 	for i := uint(0); i < f.k; i++ {
 		offset := (uint(lower) + uint(upper)*i) % f.m
 
-		if !f.getBit(offset) {
+		if !f.getBitAtomic(offset) {
 			member = false
-			f.setBit(offset)
+			f.setBitAtomic(offset)
 		}
 	}
 
 	return member
 }
 
-func (f *Filter) hash(data []byte) (uint32, uint32) {
+func (f *LockFreeFilter) hash(data []byte) (uint32, uint32) {
 	h := f.hashPool.Get().(hash.Hash64)
 	h.Write(data)
 	sum := h.Sum64()
@@ -107,34 +104,8 @@ func (f *Filter) hash(data []byte) (uint32, uint32) {
 	return higher, lower
 }
 
-func (f *Filter) getBit(offset uint) bool {
-	index := offset / 32
-	bit := offset % 32
-	mask := uint32(1 << bit)
-	ptr := &f.data[index]
-
-	b := atomic.LoadUint32(ptr)
-	return b&mask != 0
-}
-
-func (f *Filter) setBit(offset uint) {
-	index := offset / 32
-	bit := offset % 32
-	mask := uint32(1 << bit)
-	ptr := &f.data[index]
-
-	for {
-		orig := atomic.LoadUint32(ptr)
-		updated := orig | mask
-		swapped := atomic.CompareAndSwapUint32(ptr, orig, updated)
-		if swapped {
-			break
-		}
-	}
-}
-
 // GobEncode implements gob.GobEncoder interface.
-func (f *Filter) GobEncode() ([]byte, error) {
+func (f *LockFreeFilter) GobEncode() ([]byte, error) {
 	filter := &pb.Filter{
 		M:    uint64(f.m),
 		K:    uint64(f.k),
@@ -144,13 +115,13 @@ func (f *Filter) GobEncode() ([]byte, error) {
 }
 
 // GobDecode implements gob.GobDecoder interface.
-func (f *Filter) GobDecode(data []byte) error {
+func (f *LockFreeFilter) GobDecode(data []byte) error {
 	filter := &pb.Filter{}
 	if err := proto.Unmarshal(data, filter); err != nil {
 		return err
 	}
 
-	*f = Filter{
+	*f = LockFreeFilter{
 		m:        uint(filter.M),
 		k:        uint(filter.K),
 		data:     filter.Data,

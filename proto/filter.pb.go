@@ -5,8 +5,9 @@ package filter
 
 import (
 	fmt "fmt"
-	proto "github.com/golang/protobuf/proto"
 	math "math"
+
+	proto "github.com/golang/protobuf/proto"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -76,7 +77,7 @@ func (m *Filter) GetData() []uint32 {
 }
 
 func init() {
-	proto.RegisterType((*Filter)(nil), "Filter")
+	proto.RegisterType((*Filter)(nil), "LockFreeFilter")
 }
 
 func init() { proto.RegisterFile("filter.proto", fileDescriptor_1f5303cab7a20d6f) }

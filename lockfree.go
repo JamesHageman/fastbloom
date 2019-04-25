@@ -5,7 +5,6 @@ import (
 	"hash/fnv"
 	"math"
 	"sync"
-	"sync/atomic"
 
 	pb "github.com/JamesHageman/fastbloom/proto"
 	"github.com/golang/protobuf/proto"
@@ -14,9 +13,9 @@ import (
 // LockFreeFilter is an implementation of a Bloom LockFreeFilter that permits n concurrent
 // readers and m concurrent writers.
 type LockFreeFilter struct {
-	data []uint32 // underlying bit vector
-	m    uint     // filter size
-	k    uint     // number of hash functions
+	buckets Buckets // underlying bit vector
+	m       uint    // filter size
+	k       uint    // number of hash functions
 
 	hashPool sync.Pool // pool of hash objects
 }
@@ -27,7 +26,7 @@ const fillRatio = 0.5
 func NewFilter(n uint, fpRate float64) *LockFreeFilter {
 	m := optimalM(n, fpRate)
 	return &LockFreeFilter{
-		data:     make([]uint32, m/32+1),
+		buckets:  &buckets32{data: make([]uint32, m/32+1)},
 		m:        m,
 		k:        optimalK(fpRate),
 		hashPool: sync.Pool{New: fnv64},
@@ -103,32 +102,6 @@ func (f *LockFreeFilter) hash(data []byte) (uint32, uint32) {
 	h.Reset()
 	f.hashPool.Put(h)
 	return higher, lower
-}
-
-func (f *LockFreeFilter) getBitAtomic(offset uint) bool {
-	index := offset / 32
-	bit := offset % 32
-	mask := uint32(1 << bit)
-	ptr := &f.data[index]
-
-	b := atomic.LoadUint32(ptr)
-	return b&mask != 0
-}
-
-func (f *LockFreeFilter) setBitAtomic(offset uint) {
-	index := offset / 32
-	bit := offset % 32
-	mask := uint32(1 << bit)
-	ptr := &f.data[index]
-
-	for {
-		orig := atomic.LoadUint32(ptr)
-		updated := orig | mask
-		swapped := atomic.CompareAndSwapUint32(ptr, orig, updated)
-		if swapped {
-			break
-		}
-	}
 }
 
 // GobEncode implements gob.GobEncoder interface.
